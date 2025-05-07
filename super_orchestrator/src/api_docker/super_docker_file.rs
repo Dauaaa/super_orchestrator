@@ -1,18 +1,14 @@
 use std::{
-    io::{Seek, Write},
-    path::PathBuf,
-    sync::Arc,
+    env::current_dir, io::{Seek, Write}, path::PathBuf, sync::Arc
 };
 
 use futures::{future::try_join_all, TryStreamExt};
 use stacked_errors::{Result, StackableErr};
 
 use crate::{
-    api_docker::{
+    acquire_file_path, api_docker::{
         docker_socket, resolve_from_to, BootstrapOptions, ImageBuildOptions, SuperImage, Tarball,
-    },
-    cli_docker::Dockerfile,
-    sh,
+    }, cli_docker::Dockerfile, sh
 };
 
 /// Describes all the details needed to create and run a reproducible container
@@ -206,8 +202,10 @@ impl SuperDockerfile {
 
                     let mut this_ref = this.lock().unwrap();
 
-                    this_ref.append_dockerfile_lines_mut([format!("COPY {from} {to}")]);
-                    this_ref.tarball.append_file(from, file).stack()?;
+                    let x = uuid::Uuid::new_v4().to_string();
+
+                    this_ref.append_dockerfile_lines_mut([format!("COPY {x} {to}")]);
+                    this_ref.tarball.append_file(x, file).stack()?;
 
                     Ok(()) as Result<_>
                 })
@@ -332,6 +330,15 @@ impl SuperDockerfile {
             .to_string();
 
         binary_path = normalize_windows_exe_path_for_cargo_binary(binary_path);
+        let binary_path = acquire_file_path(binary_path.clone()).await.stack_err_with(|| format!(  "Failed to acquire file {binary_path}" ))?;
+
+        let binary_path = binary_path.strip_prefix(current_dir()
+            .stack_err("Failed to get current dir")?)
+            .stack()?
+            .to_str().stack()?.to_string();
+
+        tracing::info!("HELLOOOOOOOOOOOOOOOOOOOOOOOOO");
+        tracing::info!("{binary_path}");
 
         if self.debug {
             tracing::info!("Using path as entrypoint: {binary_path}");
